@@ -1,0 +1,88 @@
+* {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    display: flex;
+    justify-content: space-between;
+}
+
+.left-menu {
+    height: 100vh;
+    width: 200px;
+}
+
+#user-list {
+    height: 50%;
+    width: 100%;
+    border: black 2px solid;
+    border-bottom: 0;
+    display: flex;
+    justify-content: flex-start;
+    flex-direction: column;
+    align-items: center;
+}
+
+.input-place {
+    width: 100%;
+
+}
+#nickname-input {
+    width: 100%;
+    height: 30px;
+    font-size: 20px;
+    border: 2px solid black;
+}
+
+.player {
+    font-size: 30px;
+    width: 90%;
+    background: tomato;
+    margin: 5px;
+}
+
+.accept-window {
+    width: 300px;
+    height: 300px;
+    background: tomato;
+}
+
+.decline-window {
+    width: 300px;
+    height: 300px;
+}
+
+.newgame-button {
+    width: 300px;
+    height: 300px;
+    background: tomato;
+}
+
+.emote-button {
+    width: 50px;
+    height: 50px;
+}
+
+.emote-menu {
+    width: 400px;
+    height: 400px;
+    background: tomato;
+    position: absolute;
+}
+
+.emote-preview {
+    width: 60px;
+    height: 60px;
+}
+
+.emote-view {
+    width: 300px;
+    height: 300px;
+}
+
+#history-moves {
+    width: 400px;
+    height: 400px;
+    background: tomato;
+}

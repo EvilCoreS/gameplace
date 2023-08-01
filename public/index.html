@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link href="style.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/chessboard-1.0.0.min.css">
+    <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+    <script src="js/chessboard-1.0.0.min.js"></script>
+    <title>Test game</title>
+</head>
+<body>
+<div class="left-menu">
+    <div id="user-list"></div>
+    <div class="input-place">
+        <input type="text" name="nickname" id="nickname-input" maxlength="16" onfocusout="setNickname(this.value)">
+    </div>
+</div>
+<div class="game" style="display: none">
+    <div id="myBoard" style="width: 400px"></div>
+    <div class="game-info">
+        <label>Status:</label>
+        <div id="status"></div>
+        <div id="team"></div>
+    </div>
+    <img src="decline-button.png" class="emote-button" onclick="showEmoteMenu()" alt="emote button">
+</div>
+<img class="emote-view" style="display: none"></img>
+<div class="emote-menu" style="display: none"></div>
+</body>
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.js" integrity="sha384-s3XgLpvmHyscVpijnseAmye819Ee3yaGa8NxstkJVyA6nuDFjt59u1QvuEl/mecz" crossorigin="anonymous"></script>
+<script>
+    let socket = io()
+
+    let whiteSquareGrey = '#a9a9a9'
+    let blackSquareGrey = '#696969'
+    let board = null
+    let game
+    const $status = $('#status')
+    let team = ''
+
+
+    function removeGreySquares () {
+        $('#myBoard .square-55d63').css('background', '')
+    }
+
+    function greySquare (square) {
+        let $square = $('#myBoard .square-' + square)
+
+        let background = whiteSquareGrey
+        if ($square.hasClass('black-3c85d')) {
+            background = blackSquareGrey
+        }
+
+        $square.css('background', background)
+    }
+
+    function onDragStart (source, piece, position, orientation) {
+        // do not pick up pieces if the game is over
+        if (game.game_over()) return false
+
+        if (game.turn() !== team) return false
+
+        /*if (game.turn() !== team) return false*/
+
+        // only pick up pieces for the side to move
+        if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
+            (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
+            return false
+        }
+    }
+
+    function onDrop (source, target) {
+        removeGreySquares()
+        // see if the move is legal
+
+        let move = game.move({
+            from: source,
+            to: target,
+            promotion: 'n' // NOTE: always promote to a queen for example simplicity
+        })
+
+        // illegal move
+        if (move === null) return 'snapback'
+        socket.emit('move', {move: move, roomName: roomName})
+
+        updateStatus()
+    }
+
+    function onMouseoverSquare (square, piece) {
+        // get list of possible moves for this square
+        let moves = game.moves({
+            square: square,
+            verbose: true
+        })
+
+        // exit if there are no moves available for this square
+        if (moves.length === 0) return
+
+        // highlight the square they moused over
+        greySquare(square)
+
+        // highlight the possible squares for this piece
+        for (let i = 0; i < moves.length; i++) {
+            greySquare(moves[i].to)
+        }
+    }
+
+    function onMouseoutSquare (square, piece) {
+        removeGreySquares()
+    }
+
+    // update the board position after the piece snap
+    // for castling, en passant, pawn promotion
+    function onSnapEnd () {
+        board.position(game.fen())
+    }
+
+    function updateStatus () {
+        let status = ''
+
+        let moveColor = 'White'
+        if (game.turn() === 'b') {
+            moveColor = 'Black'
+        }
+
+        // checkmate?
+        if (game.in_checkmate()) {
+            status = 'Game over, ' + moveColor + ' is in checkmate.'
+        }
+
+        // draw?
+        else if (game.in_draw()) {
+            status = 'Game over, drawn position'
+        }
+
+        // game still on
+        else {
+            status = moveColor + ' to move'
+
+            // check?
+            if (game.in_check()) {
+                status += ', ' + moveColor + ' is in check'
+            }
+        }
+
+        $status.html(status)
+    }
+
+    function updateTeam() {
+        const item = document.getElementById('team')
+        if (team === 'w') item.innerHTML = `Your team: White`
+        else if (team === 'b') item.innerHTML = 'Your team: Black'
+        else item.innerHTML = 'Your team: Spectator'
+    }
+
+    function startGame (team) {
+        let config = {
+            draggable: true,
+            position: 'start',
+            orientation: team === 'w' ? 'white' : 'black',
+            onDragStart: onDragStart,
+            onDrop: onDrop,
+            onSnapEnd: onSnapEnd,
+            onMouseoutSquare: onMouseoutSquare,
+            onMouseoverSquare: onMouseoverSquare,
+        }
+        board = Chessboard('myBoard', config)
+        updateTeam()
+    }
+
+    function loadBoard(fen) {
+        game = new Chess(fen)
+        onSnapEnd()
+        updateStatus()
+    }
+</script>
+<script>
+    socket.on('move', (args) => {
+        const {from, to} = args
+        game.move({ from, to,  promotion: 'q'})
+        onSnapEnd()
+        updateStatus()
+        updateMovesHistory()
+    })
+
+    socket.on('board-load', (args) => {
+        const item = document.querySelector('.game')
+        item.style.display = 'block'
+        loadBoard(args)
+    })
+
+    socket.on('new-game', (args) => {
+        setTimeout(() => {
+            team = team === 'w' ? 'b' : 'w'
+            startGame(team)
+            loadBoard(args)
+        }, 5000)
+    })
+
+    socket.on('team-selection', (args) => {
+        team = args
+        startGame(team)
+    })
+
+    socket.on('update-list', (args) => {
+        const item = document.getElementById('user-list')
+        item.innerHTML = ''
+        if (currentNickname.length > 0) {
+            item.append(...args.map((player) => {
+                const nickname = document.createElement('div')
+                nickname.id = player.id
+                nickname.className = 'player'
+                nickname.innerHTML = player.nickname
+                nickname.onclick = function () {
+                    challenge({
+                        from:
+                            {id: socket.id, nickname: currentNickname},
+                        to:
+                            {id: this.id, nickname: this.innerHTML}
+                    })
+                }
+                return nickname
+            }))
+        }
+    })
+
+    socket.on('show-challenge', (args) => {
+        document.querySelector('.left-menu').style.display = 'none'
+
+        const acceptWindow = document.createElement('img')
+        const declineWindow = document.createElement('img')
+
+        /*const acceptTimeout = setTimeout(() => {
+            acceptWindow.remove()
+            declineWindow.remove()
+            document.querySelector('.left-menu').style.display = 'block'
+            socket.emit('decline-match', args   )
+        }, 5000)*/
+
+        acceptWindow.src = 'accept-button.jpg'
+        acceptWindow.className = 'accept-window'
+        acceptWindow.onclick = function () {
+            // clearTimeout(acceptWindow)
+            acceptWindow.remove()
+            declineWindow.remove()
+            socket.emit('preload-match', args)
+        }
+
+        declineWindow.className = 'decline-window'
+        declineWindow.src = 'decline-button.png'
+        declineWindow.onclick = function () {
+            // clearTimeout(acceptTimeout)
+            acceptWindow.remove()
+            declineWindow.remove()
+            document.querySelector('.left-menu').style.display = 'block'
+            socket.emit('decline-match', args)
+        }
+
+        document.body.append(acceptWindow, declineWindow)
+    })
+
+    socket.on('start-match', (args) => {
+        infoAboutCurrentMatch = args
+        roomName = args.from.id + "-" + args.to.id
+        const item = document.createElement('div')
+        item.id = 'history-moves'
+        item.innerHTML = game.pgn()
+
+        document.body.appendChild(item)
+    })
+
+    socket.on('game-end', () => {
+        const newGameButton = document.createElement('div')
+        newGameButton.className = 'newgame-button'
+        newGameButton.innerHTML = 'New Game'
+        newGameButton.onclick = function () {
+            newGameButton.remove()
+            document.querySelector('.game').style.display = 'none'
+            document.querySelector('.left-menu').style.display = 'block'
+            document.getElementById('history-moves').remove()
+            socket.emit('leaveRoom', roomName)
+        }
+
+        document.body.appendChild(newGameButton)
+    })
+
+    socket.on('match-declined', (args) => {
+        document.querySelector('.left-menu').style.display = 'block'
+        socket.emit('leaveRoom', args)
+    })
+
+    socket.on('start-emote', (args) => {
+        clearTimeout(emoteTimeout)
+        const item = document.querySelector('.emote-view')
+        item.src = `emotes/${args}`
+        item.style.display = 'block'
+
+        emoteTimeout = setTimeout(() => {
+            item.style.display = 'none'
+        }, 3000)
+    })
+
+  /*  socket.on('join-room', (args) => {
+        socket.emit('join-room', args)
+    })
+
+    socket.on('preload-match', (args) => {
+        socket.emit('preload-match', args)
+    })*/
+
+</script>
+<script>
+    let currentNickname = ''
+    let infoAboutCurrentMatch
+    let roomName
+    let emoteTimeout
+
+    const gifNames = ['serega-laugh.gif', '399634333.gif', '448051554.gif', '493259618.gif', '696471947.gif', '929646746.gif', '1032979496.gif', '1249102856.gif', '1479007628.gif', '1492863256.gif', '1578860288.gif', '1580868214.gif', '1901778147.gif', '2134203670.gif', 'emojibest_com_1000854125.gif', 'emojibest_com_1820766340.gif', 'emojibest_com_2059928113.gif']
+    function setNickname(nickname) {
+        if (nickname.length > 0) {
+            currentNickname = nickname
+            socket.emit('update-nick', nickname)
+        }
+        else {
+            alert('Incorrect nickname')
+        }
+    }
+
+    function challenge(info) {
+        if (info.from.id !== info.to.id) {
+            document.querySelector('.left-menu').style.display = 'none'
+            socket.emit('challenge', info)
+        }
+        else
+            alert('Choose other player')
+    }
+
+    function updateMovesHistory() {
+        const item = document.getElementById('history-moves')
+        item.innerHTML = game.pgn()
+    }
+
+    function showEmoteMenu() {
+        const menu = document.querySelector('.emote-menu')
+        preloadEmotes(menu)
+        if (menu.style.display === 'none') {
+            menu.style.display = 'block'
+        } else {
+            menu.style.display = 'none'
+        }
+    }
+
+    function preloadEmotes(menu) {
+        menu.innerHTML = ''
+        menu.append(...gifNames.map((name) => {
+            const emote = document.createElement('img')
+            emote.src = `emotes/${name}`
+            emote.className = 'emote-preview'
+            emote.onclick = function () {
+                menu.style.display = 'none'
+                socket.emit('start-emote', {room: roomName, emote: name})
+            }
+            return emote
+        }))
+    }
+</script>
+</html>
